@@ -29,7 +29,7 @@
           <a-col :span="6">
             <div class="stat-card">
               <div class="stat-icon">⏱️</div>
-              <div class="stat-label">总耗时</div>
+              <div class="stat-label">总路程耗时</div>
               <div class="stat-value">{{ escapePlan.total_duration }}分钟</div>
             </div>
           </a-col>
@@ -231,7 +231,8 @@ const getEventColor = (event: string) => {
   if (event.includes('下班')) return 'green'
   if (event.includes('晚餐')) return 'orange'
   if (event.includes('电影') || event.includes('观影')) return 'red'
-  return 'blue'
+  if (event.includes('到家')) return 'blue'
+  return 'gray'
 }
 
 const initMap = async () => {
@@ -244,17 +245,24 @@ const initMap = async () => {
       plugins: ['AMap.Marker', 'AMap.Polyline', 'AMap.InfoWindow']
     })
 
-    // 计算地图中心点 - 基于电影院和餐厅位置
+    // 计算地图中心点 - 基于所有位置
     let centerLng = 121.4737  // 默认上海
     let centerLat = 31.2304
 
     const validLocations: [number, number][] = []
 
-    if (escapePlan.value.cinema?.location) {
-      validLocations.push([escapePlan.value.cinema.location.longitude, escapePlan.value.cinema.location.latitude])
+    // 收集所有有效坐标
+    if (escapePlan.value.origin_location) {
+      validLocations.push([escapePlan.value.origin_location.longitude, escapePlan.value.origin_location.latitude])
     }
     if (escapePlan.value.restaurant?.location) {
       validLocations.push([escapePlan.value.restaurant.location.longitude, escapePlan.value.restaurant.location.latitude])
+    }
+    if (escapePlan.value.cinema?.location) {
+      validLocations.push([escapePlan.value.cinema.location.longitude, escapePlan.value.cinema.location.latitude])
+    }
+    if (escapePlan.value.destination_location) {
+      validLocations.push([escapePlan.value.destination_location.longitude, escapePlan.value.destination_location.latitude])
     }
 
     // 如果有有效位置，计算中心点
@@ -272,21 +280,22 @@ const initMap = async () => {
 
     // 添加标记
     const markers: any[] = []
+    const polylines: any[] = []
 
-    // 电影院
-    if (escapePlan.value.cinema?.location) {
-      const cinemaMarker = new AMap.Marker({
-        position: [escapePlan.value.cinema.location.longitude, escapePlan.value.cinema.location.latitude],
-        title: escapePlan.value.cinema.name,
+    // 起点标记
+    if (escapePlan.value.origin_location) {
+      const startMarker = new AMap.Marker({
+        position: [escapePlan.value.origin_location.longitude, escapePlan.value.origin_location.latitude],
+        title: '起点',
         label: {
-          content: '<div style="background: #ff4d4f; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">🎬 电影院</div>',
+          content: '<div style="background: #52c41a; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">🏢 起点</div>',
           offset: new AMap.Pixel(0, -30)
         }
       })
-      markers.push(cinemaMarker)
+      markers.push(startMarker)
     }
 
-    // 餐厅
+    // 餐厅标记
     if (escapePlan.value.restaurant?.location) {
       const restaurantMarker = new AMap.Marker({
         position: [escapePlan.value.restaurant.location.longitude, escapePlan.value.restaurant.location.latitude],
@@ -299,9 +308,72 @@ const initMap = async () => {
       markers.push(restaurantMarker)
     }
 
+    // 电影院标记
+    if (escapePlan.value.cinema?.location) {
+      const cinemaMarker = new AMap.Marker({
+        position: [escapePlan.value.cinema.location.longitude, escapePlan.value.cinema.location.latitude],
+        title: escapePlan.value.cinema.name,
+        label: {
+          content: '<div style="background: #ff4d4f; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">🎬 电影院</div>',
+          offset: new AMap.Pixel(0, -30)
+        }
+      })
+      markers.push(cinemaMarker)
+    }
+
+    // 终点标记
+    if (escapePlan.value.destination_location) {
+      const endMarker = new AMap.Marker({
+        position: [escapePlan.value.destination_location.longitude, escapePlan.value.destination_location.latitude],
+        title: '终点',
+        label: {
+          content: '<div style="background: #1890ff; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px;">🏠 终点</div>',
+          offset: new AMap.Pixel(0, -30)
+        }
+      })
+      markers.push(endMarker)
+    }
+
+    // 绘制路线连线
+    const lineColor = ['#52c41a', '#fa8c16', '#ff4d4f', '#1890ff'] // 绿、橙、红、蓝
+
+    // 构建路线点顺序
+    const routePoints: [number, number][] = []
+    if (escapePlan.value.origin_location) {
+      routePoints.push([escapePlan.value.origin_location.longitude, escapePlan.value.origin_location.latitude])
+    }
+    if (escapePlan.value.restaurant?.location) {
+      routePoints.push([escapePlan.value.restaurant.location.longitude, escapePlan.value.restaurant.location.latitude])
+    }
+    if (escapePlan.value.cinema?.location) {
+      routePoints.push([escapePlan.value.cinema.location.longitude, escapePlan.value.cinema.location.latitude])
+    }
+    if (escapePlan.value.destination_location) {
+      routePoints.push([escapePlan.value.destination_location.longitude, escapePlan.value.destination_location.latitude])
+    }
+
+    // 绘制完整路线
+    if (routePoints.length >= 2) {
+      const routeLine = new AMap.Polyline({
+        path: routePoints,
+        strokeColor: '#667eea',
+        strokeWeight: 4,
+        strokeOpacity: 0.8,
+        strokeStyle: 'solid',
+        showDir: true
+      })
+      polylines.push(routeLine)
+    }
+
+    // 添加标记和线到地图
     if (markers.length > 0) {
       map.add(markers)
-      map.setFitView(markers)
+    }
+    if (polylines.length > 0) {
+      map.add(polylines)
+    }
+    if (validLocations.length > 0) {
+      map.setFitView(markers.concat(polylines))
     }
 
     message.success('地图加载成功')

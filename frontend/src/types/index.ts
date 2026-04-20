@@ -142,6 +142,8 @@ export interface TimelineEvent {
 export interface EscapePlan {
   origin: string
   destination: string
+  origin_location?: Location
+  destination_location?: Location
   off_work_time: string
   total_duration: number
   total_distance: number

@@ -272,6 +272,8 @@ class EscapePlan(BaseModel):
     """逃离计划"""
     origin: str = Field(..., description="起点")
     destination: str = Field(..., description="终点")
+    origin_location: Optional[Location] = Field(default=None, description="起点坐标")
+    destination_location: Optional[Location] = Field(default=None, description="终点坐标")
     off_work_time: str = Field(..., description="下班时间")
     total_duration: int = Field(..., description="总耗时(分钟)")
     total_distance: float = Field(..., description="总距离(米)")

@@ -103,6 +103,8 @@ class EscapePlannerAgent:
             segments = []
             total_duration = 0
             total_distance = 0.0
+            route_to_cinema = None
+            route_to_dest = None
 
             # 起点 -> 电影院
             if cinema:
@@ -163,13 +165,16 @@ class EscapePlannerAgent:
             travel_to_cinema_min = route_to_cinema.duration // 60 if route_to_cinema else 0
             # 计算到餐厅的时间（秒转分钟）
             travel_to_restaurant_min = route_to_restaurant.duration // 60 if route_to_restaurant else travel_to_cinema_min
+            # 计算电影院到终点的时间（秒转分钟）
+            travel_from_cinema_min = route_to_dest.duration // 60 if route_to_dest else 0
 
             timeline = self._generate_timeline(
                 request,
                 cinema,
                 restaurant,
                 travel_to_cinema_min,
-                travel_to_restaurant_min
+                travel_to_restaurant_min,
+                travel_from_cinema_min
             )
 
             # 选择电影场次
@@ -197,6 +202,8 @@ class EscapePlannerAgent:
             escape_plan = EscapePlan(
                 origin=request.origin,
                 destination=request.destination,
+                origin_location=origin_location,
+                destination_location=dest_location,
                 off_work_time=request.off_work_time,
                 total_duration=total_duration // 60,  # 转换为分钟
                 total_distance=total_distance,
@@ -521,7 +528,8 @@ class EscapePlannerAgent:
         cinema: Optional[Cinema],
         restaurant: Optional[Restaurant],
         travel_to_cinema_minutes: int = 0,
-        travel_to_restaurant_minutes: int = 0
+        travel_to_restaurant_minutes: int = 0,
+        travel_from_cinema_minutes: int = 0
     ) -> List[Dict[str, Any]]:
         """生成详细时间线"""
         timeline = []
@@ -591,6 +599,15 @@ class EscapePlannerAgent:
                 "event": "电影结束",
                 "location": cinema.name,
                 "description": "返回家中或继续其他活动"
+            })
+
+            # 到家
+            arrive_home_minutes = end_minutes + travel_from_cinema_minutes
+            timeline.append({
+                "time": f"{arrive_home_minutes // 60}:{arrive_home_minutes % 60:02d}",
+                "event": "到家",
+                "location": request.destination,
+                "description": "回家休息"
             })
 
         return timeline
