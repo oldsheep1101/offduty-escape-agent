@@ -252,24 +252,34 @@ class EscapePlannerAgent:
     ) -> Optional[Cinema]:
         """
         在起点和终点之间寻找电影院
-        使用高德地图POI搜索电影院
+        使用高德地图周边搜索，优先在中间点3km内查找
         """
         try:
             # 计算路径中间点
             mid_longitude = (origin.longitude + destination.longitude) / 2
             mid_latitude = (origin.latitude + destination.latitude) / 2
 
-            # 搜索电影院
-            print(f"   在路径中间点搜索电影院...")
-            cinemas = self._search_cinema(mid_longitude, mid_latitude, city)
+            print(f"   中间点坐标: ({mid_longitude}, {mid_latitude})")
+
+            # 首先在中间点3km范围内搜索
+            print(f"   在中间点3km范围内搜索电影院...")
+            cinemas = self._search_cinema(mid_longitude, mid_latitude, city, radius=3000)
 
             if cinemas:
-                # 返回最近的电影院
+                print(f"   3km内找到 {len(cinemas)} 家电影院，最近的: {cinemas[0].name}")
+                return cinemas[0]
+
+            # 3km没找到，扩大到5km
+            print("   3km内无电影院，扩大到5km搜索...")
+            cinemas = self._search_cinema(mid_longitude, mid_latitude, city, radius=5000)
+
+            if cinemas:
+                print(f"   5km内找到 {len(cinemas)} 家电影院，最近的: {cinemas[0].name}")
                 return cinemas[0]
 
             # 如果中间点没找到，在起点附近找
-            print("   中间点没找到电影院，在起点附近搜索...")
-            cinemas = self._search_cinema(origin.longitude, origin.latitude, city)
+            print("   中间点附近无电影院，在起点附近搜索...")
+            cinemas = self._search_cinema(origin.longitude, origin.latitude, city, radius=5000)
             if cinemas:
                 return cinemas[0]
 
@@ -279,17 +289,18 @@ class EscapePlannerAgent:
             print(f"寻找电影院失败: {str(e)}")
             return None
 
-    def _search_cinema(self, longitude: float, latitude: float, city: str) -> List[Cinema]:
-        """在指定坐标附近搜索电影院"""
+    def _search_cinema(self, longitude: float, latitude: float, city: str, radius: int = 3000) -> List[Cinema]:
+        """在指定坐标附近搜索电影院（周边搜索）"""
         try:
-            # 使用MCP工具搜索电影院
+            # 使用MCP工具进行周边搜索
             result = self.amap_tool.run({
                 "action": "call_tool",
-                "tool_name": "maps_text_search",
+                "tool_name": "maps_around_search",
                 "arguments": {
                     "keywords": "电影院",
-                    "city": city,
-                    "citylimit": "true"
+                    "location": f"{longitude},{latitude}",
+                    "radius": str(radius),
+                    "sortrule": "distance"
                 }
             })
 
@@ -425,14 +436,15 @@ class EscapePlannerAgent:
     ) -> Optional[Restaurant]:
         """搜索附近的餐厅（基于电影院位置的周边搜索）"""
         try:
-            # 使用电影院位置作为中心点，搜索附近餐厅
+            # 使用电影院位置作为中心点，搜索附近3km内的餐厅
             result = self.amap_tool.run({
                 "action": "call_tool",
-                "tool_name": "maps_text_search",
+                "tool_name": "maps_around_search",
                 "arguments": {
                     "keywords": "餐厅",
-                    "city": city,
-                    "citylimit": "true"
+                    "location": f"{location.longitude},{location.latitude}",
+                    "radius": "3000",
+                    "sortrule": "distance"
                 }
             })
 
