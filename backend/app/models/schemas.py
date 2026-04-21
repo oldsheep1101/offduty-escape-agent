@@ -214,6 +214,8 @@ class EscapeRequest(BaseModel):
     off_work_time: str = Field(..., description="下班时间 HH:MM", example="18:00")
     city: str = Field(..., description="城市", example="北京")
     movie_preference: Optional[str] = Field(default="", description="电影偏好", example="动作片")
+    cuisine: Optional[str] = Field(default="", description="菜系偏好", example="川菜")
+    budget_per_person: Optional[int] = Field(default=80, description="人均预算(元)", example=80)
 
     class Config:
         json_schema_extra = {
@@ -222,7 +224,9 @@ class EscapeRequest(BaseModel):
                 "destination": "北京市海淀区五道口华联",
                 "off_work_time": "18:00",
                 "city": "北京",
-                "movie_preference": "动作片"
+                "movie_preference": "动作片",
+                "cuisine": "川菜",
+                "budget_per_person": 80
             }
         }
 

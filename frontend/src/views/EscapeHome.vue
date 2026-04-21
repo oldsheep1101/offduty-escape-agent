@@ -135,6 +135,44 @@
                 </a-select>
               </a-form-item>
             </a-col>
+            <a-col :span="8">
+              <a-form-item name="cuisine">
+                <template #label>
+                  <span class="form-label">餐厅菜系(可选)</span>
+                </template>
+                <a-select v-model:value="formData.cuisine" size="large" class="custom-select" placeholder="选择菜系">
+                  <a-select-option value="">不限</a-select-option>
+                  <a-select-option value="川菜">🌶️ 川菜</a-select-option>
+                  <a-select-option value="湘菜">🔥 湘菜</a-select-option>
+                  <a-select-option value="粤菜">🍽️ 粤菜</a-select-option>
+                  <a-select-option value="火锅">🍲 火锅</a-select-option>
+                  <a-select-option value="烧烤">🍖 烧烤</a-select-option>
+                  <a-select-option value="日本料理">🍣 日本料理</a-select-option>
+                  <a-select-option value="韩国料理">🥘 韩国料理</a-select-option>
+                  <a-select-option value="西餐">🍝 西餐</a-select-option>
+                </a-select>
+              </a-form-item>
+            </a-col>
+          </a-row>
+
+          <a-row :gutter="24">
+            <a-col :span="8" :offset="16">
+              <a-form-item name="budget_per_person">
+                <template #label>
+                  <span class="form-label">人均预算(元/人)</span>
+                </template>
+                <a-input-number
+                  v-model:value="formData.budget_per_person"
+                  :min="20"
+                  :max="500"
+                  :step="10"
+                  placeholder="80"
+                  size="large"
+                  class="custom-input"
+                  style="width: 100%"
+                />
+              </a-form-item>
+            </a-col>
           </a-row>
         </div>
 
@@ -225,7 +263,9 @@ const formData = reactive<EscapeFormData & { off_work_time: Dayjs | null }>({
   destination: '',
   off_work_time: null,
   city: '',
-  movie_preference: ''
+  movie_preference: '',
+  cuisine: '',
+  budget_per_person: 80
 })
 
 const handleSubmit = async () => {
@@ -261,7 +301,9 @@ const handleSubmit = async () => {
       destination: formData.destination,
       off_work_time: formData.off_work_time.format('HH:mm'),
       city: formData.city,
-      movie_preference: formData.movie_preference
+      movie_preference: formData.movie_preference,
+      cuisine: formData.cuisine,
+      budget_per_person: formData.budget_per_person
     }
 
     const response = await generateEscapePlan(requestData)

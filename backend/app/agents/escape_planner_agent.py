@@ -147,7 +147,9 @@ class EscapePlannerAgent:
             if cinema:
                 restaurant = self._search_nearby_restaurant(
                     cinema.location,
-                    request.city
+                    request.city,
+                    cuisine=request.cuisine,
+                    budget=request.budget_per_person
                 )
                 # 规划从起点到餐厅的路线
                 if restaurant:
@@ -432,50 +434,126 @@ class EscapePlannerAgent:
     def _search_nearby_restaurant(
         self,
         location: Location,
-        city: str
+        city: str,
+        cuisine: str = "",
+        budget: int = 80
     ) -> Optional[Restaurant]:
         """搜索附近的餐厅（基于电影院位置的周边搜索）"""
         try:
+            # 构建搜索关键词（包含菜系）
+            keywords = cuisine if cuisine else "餐厅"
+
             # 使用电影院位置作为中心点，搜索附近3km内的餐厅
             result = self.amap_tool.run({
                 "action": "call_tool",
                 "tool_name": "maps_around_search",
                 "arguments": {
-                    "keywords": "餐厅",
+                    "keywords": keywords,
                     "location": f"{location.longitude},{location.latitude}",
                     "radius": "3000",
-                    "sortrule": "distance"
+                    "sortrule": "distance",
+                    "show_fields": "cost"  # 请求返回人均消费
                 }
             })
 
             print(f"   餐厅搜索结果: {result[:300]}...")
+            print(f"   菜系偏好: {cuisine}, 人均预算: {budget}元")
 
             restaurants = self._parse_restaurant_result(result, city)
 
-            # 计算每个餐厅到电影院位置的直线距离
+            # 对餐厅调用 detail API 获取人均消费
             for restaurant in restaurants:
                 if restaurant.location:
                     restaurant.distance = self._calculate_distance(
                         location.longitude, location.latitude,
                         restaurant.location.longitude, restaurant.location.latitude
                     )
+                # 获取人均消费（通过 detail API）
+                cost = self._get_restaurant_cost(restaurant.name, location, city)
+                if cost > 0:
+                    restaurant.estimated_cost = cost
 
             if restaurants:
-                # 按距离排序，只保留3公里内的
+                # 按距离排序
                 restaurants.sort(key=lambda x: x.distance if x.distance > 0 else 999999)
-                nearby = [r for r in restaurants if r.distance <= 3000]
-                if nearby:
-                    print(f"   3公里内找到 {len(nearby)} 家餐厅，最近的: {nearby[0].name}")
-                    return nearby[0]
-                # 如果3公里内没有，返回最近的
+
+                # 过滤人均在预算±20范围内的餐厅
+                budget_min = budget - 20
+                budget_max = budget + 20
+                in_budget = [r for r in restaurants if r.estimated_cost > 0 and budget_min <= r.estimated_cost <= budget_max]
+
+                if in_budget:
+                    print(f"   预算范围内找到 {len(in_budget)} 家餐厅，最近的: {in_budget[0].name} (人均: {in_budget[0].estimated_cost}元)")
+                    return in_budget[0]
+
+                # 如果预算范围内没有，返回最近的
                 if restaurants:
-                    print(f"   3公里内无餐厅，返回最近的: {restaurants[0].name}，距离 {restaurants[0].distance:.0f}米")
+                    print(f"   预算±20元内无餐厅，返回最近的: {restaurants[0].name}，距离 {restaurants[0].distance:.0f}米，人均: {restaurants[0].estimated_cost}元")
                     return restaurants[0]
             return None
 
         except Exception as e:
             print(f"搜索餐厅失败: {str(e)}")
             return None
+
+    def _get_restaurant_cost(self, name: str, location: Location, city: str) -> int:
+        """通过 detail API 获取餐厅人均消费"""
+        try:
+            # 先通过 text search 找到这个餐厅的 POI ID
+            search_result = self.amap_tool.run({
+                "action": "call_tool",
+                "tool_name": "maps_text_search",
+                "arguments": {
+                    "keywords": name,
+                    "city": city,
+                    "citylimit": "true"
+                }
+            })
+
+            import re, json
+            json_match = re.search(r'\{.*\}', search_result, re.DOTALL)
+            if not json_match:
+                return 0
+
+            data = json.loads(json_match.group())
+            pois = data.get("return", data.get("pois", []))
+            if not pois:
+                return 0
+
+            # 获取第一个匹配的 POI ID
+            poi_id = pois[0].get("id", "")
+            if not poi_id:
+                return 0
+
+            # 调用 detail API 获取详细信息
+            detail_result = self.amap_tool.run({
+                "action": "call_tool",
+                "tool_name": "maps_search_detail",
+                "arguments": {
+                    "id": poi_id
+                }
+            })
+
+            json_match2 = re.search(r'\{.*\}', detail_result, re.DOTALL)
+            if not json_match2:
+                return 0
+
+            detail_data = json.loads(json_match2.group())
+
+            # 尝试多个可能的字段名
+            for cost_key in ["avgcost", "cost", "average_cost", "price"]:
+                cost_val = detail_data.get(cost_key)
+                if cost_val:
+                    try:
+                        return int(float(cost_val))
+                    except:
+                        pass
+
+            return 0
+
+        except Exception as e:
+            print(f"获取餐厅人均消费失败: {str(e)}")
+            return 0
 
     def _parse_restaurant_result(self, result: str, city: str) -> List[Restaurant]:
         """解析餐厅搜索结果"""
@@ -514,6 +592,16 @@ class EscapePlannerAgent:
                             print(f"   无法获取 '{poi.get('name')}' 坐标，跳过")
                             continue
 
+                        # 尝试获取人均消费，尝试多个可能的字段名
+                        cost = 0
+                        for cost_key in ["cost", "avgcost", "average_cost", "price", "per_cost"]:
+                            if poi.get(cost_key):
+                                try:
+                                    cost = int(float(poi.get(cost_key, 0)))
+                                    break
+                                except:
+                                    pass
+
                         restaurant = Restaurant(
                             name=poi.get("name", "未知餐厅"),
                             address=poi.get("address", ""),
@@ -522,7 +610,7 @@ class EscapePlannerAgent:
                             price_range="",
                             rating=float(poi.get("rating", 0)) if poi.get("rating") else None,
                             distance=0.0,  # 稍后计算
-                            estimated_cost=80
+                            estimated_cost=cost
                         )
                         restaurants.append(restaurant)
                     except Exception as ex:

@@ -163,6 +163,8 @@ export interface EscapeFormData {
   off_work_time: string
   city: string
   movie_preference: string
+  cuisine: string
+  budget_per_person: number
 }
 
 export interface EscapePlanResponse {
