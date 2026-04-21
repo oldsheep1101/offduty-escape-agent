@@ -1,15 +1,24 @@
 # 下班逃离助手 🎬🍽️
 
 基于 HelloAgents 框架和 Vue3 构建的智能下班娱乐规划助手，集成高德地图 MCP 服务，在回家路上为你规划一场电影+美食的逃离之旅。
+<img width="1460" height="786" alt="截屏2026-04-21 14 58 30" src="https://github.com/user-attachments/assets/33eb26ff-92a3-44b4-ac75-fbde62c98bc1" />
+
 
 ## ✨ 功能特点
 
 - 🎬 **智能影院推荐**: 在回家路线沿途自动搜索最近的电影院
 - 🍽️ **周边美食搜索**: 基于电影院位置，搜索附近3公里内的餐厅
 - 🛣️ **精准路线规划**: 使用高德地图 API 规划实际驾乘路线和耗时
+<img width="428" height="522" alt="截屏2026-04-21 14 44 19" src="https://github.com/user-attachments/assets/4b8bc509-6b9f-42e9-8ff8-77a63e3457d0" />
+
 - ⏰ **合理时间安排**: 根据下班时间和电影场次智能安排晚餐时间
+<img width="1272" height="698" alt="截屏2026-04-21 14 44 27" src="https://github.com/user-attachments/assets/0af2e606-4a62-48e7-86bb-bca42a8247a4" />
+
 - 📍 **直观地图展示**: 高德地图标记电影院、餐厅位置
 - 🎨 **现代化前端**: Vue3 + TypeScript + Ant Design Vue，流畅用户体验
+
+<img width="949" height="689" alt="截屏2026-04-21 14 55 29" src="https://github.com/user-attachments/assets/f186e688-a172-4ccf-b28a-995f07f9197f" />
+
 
 ## 🏗️ 技术栈
 
