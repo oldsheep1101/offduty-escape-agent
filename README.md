@@ -206,7 +206,10 @@ amap_tool = MCPTool(
 ```env
 # 高德地图
 AMAP_API_KEY=你的高德地图API Key
-
+AMAP_MAPS_API_KEY=你的高德地图API Key
+# 服务器配置
+HOST=0.0.0.0
+PORT=8000
 # LLM 配置 (支持 OpenAI / DeepSeek 等)
 LLM_API_KEY=你的LLM API Key
 LLM_BASE_URL=https://api.openai.com/v1  # 或其他 LLM 提供商地址
@@ -216,8 +219,13 @@ LLM_MODEL_ID=gpt-4  # 或其他模型
 ### 前端 (.env)
 
 ```env
+VITE_AMAP_WEB_KEY=你的高德地图API Key
 VITE_AMAP_WEB_JS_KEY=你的高德地图Web端JS API Key
 VITE_API_BASE_URL=http://localhost:8000
+
+AMAP_API_KEY=你的高德地图API Key
+AMAP_KEY=你的高德地图API Key
+AMAP_MAPS_API_KEY=你的高德地图API Key
 ```
 
 ## 🤝 贡献指南
