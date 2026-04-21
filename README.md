@@ -7,9 +7,11 @@
 ## ✨ 功能特点
 
 - 🎬 **智能影院推荐**: 在回家路线沿途自动搜索最近的电影院
+
 - 🍽️ **周边美食搜索**: 基于电影院位置，搜索附近3公里内的餐厅
 - 🛣️ **精准路线规划**: 使用高德地图 API 规划实际驾乘路线和耗时
 <img width="428" height="522" alt="截屏2026-04-21 14 44 19" src="https://github.com/user-attachments/assets/4b8bc509-6b9f-42e9-8ff8-77a63e3457d0" />
+<img width="419" height="390" alt="截屏2026-04-21 15 38 52" src="https://github.com/user-attachments/assets/9db8ed73-155a-43f3-9c31-f07bc3d9d0fa" />
 
 - ⏰ **合理时间安排**: 根据下班时间和电影场次智能安排晚餐时间
 <img width="1272" height="698" alt="截屏2026-04-21 14 44 27" src="https://github.com/user-attachments/assets/0af2e606-4a62-48e7-86bb-bca42a8247a4" />
