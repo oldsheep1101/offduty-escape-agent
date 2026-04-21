@@ -216,6 +216,7 @@ class EscapeRequest(BaseModel):
     movie_preference: Optional[str] = Field(default="", description="电影偏好", example="动作片")
     cuisine: Optional[str] = Field(default="", description="菜系偏好", example="川菜")
     budget_per_person: Optional[int] = Field(default=80, description="人均预算(元)", example=80)
+    transportation: str = Field(default="driving", description="交通方式: driving/transit", example="driving")
 
     class Config:
         json_schema_extra = {
@@ -272,6 +273,26 @@ class RouteSegment(BaseModel):
     description: str = Field(default="", description="路线描述")
 
 
+class TransitSegment(BaseModel):
+    """公共交通段"""
+    type: str = Field(..., description="交通类型: bus/subway/walking")
+    name: str = Field(..., description="线路名称", example="地铁1号线")
+    start_stop: str = Field(default="", description="出发站")
+    end_stop: str = Field(default="", description="到达站")
+    stops: int = Field(default=0, description="站数")
+    duration: int = Field(default=0, description="耗时(分钟)")
+    description: str = Field(default="", description="描述")
+
+
+class TransitRoute(BaseModel):
+    """公共交通路线"""
+    total_duration: int = Field(..., description="总耗时(分钟)")
+    total_distance: float = Field(..., description="总距离(米)")
+    total_cost: float = Field(default=0, description="总费用(元)")
+    segments: List[TransitSegment] = Field(default=[], description="交通段列表")
+    description: str = Field(default="", description="路线描述")
+
+
 class EscapePlan(BaseModel):
     """逃离计划"""
     origin: str = Field(..., description="起点")
@@ -284,6 +305,8 @@ class EscapePlan(BaseModel):
 
     # 路径信息
     route_segments: List[RouteSegment] = Field(default=[], description="路线分段")
+    transit_to_cinema: Optional[TransitRoute] = Field(default=None, description="从起点到电影院的公交路线")
+    transit_from_cinema: Optional[TransitRoute] = Field(default=None, description="从电影院到终点的公交路线")
 
     # 电影安排
     cinema: Optional[Cinema] = Field(default=None, description="影院信息")

@@ -156,7 +156,7 @@
           </a-row>
 
           <a-row :gutter="24">
-            <a-col :span="8" :offset="16">
+            <a-col :span="8" :offset="8">
               <a-form-item name="budget_per_person">
                 <template #label>
                   <span class="form-label">人均预算(元/人)</span>
@@ -171,6 +171,17 @@
                   class="custom-input"
                   style="width: 100%"
                 />
+              </a-form-item>
+            </a-col>
+            <a-col :span="8">
+              <a-form-item name="transportation">
+                <template #label>
+                  <span class="form-label">交通方式</span>
+                </template>
+                <a-select v-model:value="formData.transportation" size="large" class="custom-select" placeholder="选择交通方式">
+                  <a-select-option value="driving">🚗 开车</a-select-option>
+                  <a-select-option value="transit">🚌 公共交通</a-select-option>
+                </a-select>
               </a-form-item>
             </a-col>
           </a-row>
@@ -265,7 +276,8 @@ const formData = reactive<EscapeFormData & { off_work_time: Dayjs | null }>({
   city: '',
   movie_preference: '',
   cuisine: '',
-  budget_per_person: 80
+  budget_per_person: 80,
+  transportation: 'driving'
 })
 
 const handleSubmit = async () => {
@@ -303,7 +315,8 @@ const handleSubmit = async () => {
       city: formData.city,
       movie_preference: formData.movie_preference,
       cuisine: formData.cuisine,
-      budget_per_person: formData.budget_per_person
+      budget_per_person: formData.budget_per_person,
+      transportation: formData.transportation
     }
 
     const response = await generateEscapePlan(requestData)

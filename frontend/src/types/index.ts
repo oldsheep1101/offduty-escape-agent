@@ -148,6 +148,8 @@ export interface EscapePlan {
   total_duration: number
   total_distance: number
   route_segments: RouteSegment[]
+  transit_to_cinema?: TransitRoute
+  transit_from_cinema?: TransitRoute
   cinema?: Cinema
   selected_showtime?: MovieShowtime
   dinner_before_or_after: string
@@ -165,6 +167,25 @@ export interface EscapeFormData {
   movie_preference: string
   cuisine: string
   budget_per_person: number
+  transportation: string
+}
+
+export interface TransitSegment {
+  type: string
+  name: string
+  start_stop: string
+  end_stop: string
+  stops: number
+  duration: number
+  description: string
+}
+
+export interface TransitRoute {
+  total_duration: number
+  total_distance: number
+  total_cost: number
+  segments: TransitSegment[]
+  description: string
 }
 
 export interface EscapePlanResponse {

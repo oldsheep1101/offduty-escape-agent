@@ -9,7 +9,7 @@ from ..services.llm_service import get_llm
 from ..services.amap_service import get_amap_service
 from ..models.schemas import (
     EscapeRequest, EscapePlan, Cinema, Restaurant, MovieShowtime,
-    RouteSegment, Location, MovieShowtime
+    RouteSegment, Location, MovieShowtime, TransitRoute, TransitSegment
 )
 from ..config import get_settings
 
@@ -140,6 +140,32 @@ class EscapePlannerAgent:
 
             print(f"   总距离: {total_distance/1000:.1f}公里, 总耗时: {total_duration/60:.0f}分钟")
 
+            # 步骤3.5: 如果选择公共交通，规划公交路线
+            transit_route = None
+            if request.transportation == "transit":
+                print("\n🚌 步骤3.5: 规划公共交通路线...")
+                # 从起点到电影院的公交路线
+                transit_to_cinema = None
+                transit_from_cinema = None
+                if cinema:
+                    transit_to_cinema = self._plan_transit_route(
+                        request.origin,
+                        cinema.address,
+                        request.city
+                    )
+                    transit_from_cinema = self._plan_transit_route(
+                        cinema.address,
+                        request.destination,
+                        request.city
+                    )
+                else:
+                    # 没有电影院，直接规划起点到终点的公交
+                    transit_to_cinema = self._plan_transit_route(
+                        request.origin,
+                        request.destination,
+                        request.city
+                    )
+
             # 步骤4: 搜索电影院附近餐厅
             print("\n🍽️ 步骤4: 搜索餐厅...")
             restaurant = None
@@ -163,26 +189,24 @@ class EscapePlannerAgent:
 
             # 步骤5: 生成时间线
             print("\n📋 步骤5: 生成时间线...")
-            # 计算到电影院的时间（秒转分钟）
-            travel_to_cinema_min = route_to_cinema.duration // 60 if route_to_cinema else 0
-            # 计算到餐厅的时间（秒转分钟）
+            # 计算到电影院的时间
+            if request.transportation == "transit" and transit_to_cinema:
+                travel_to_cinema_min = transit_to_cinema.total_duration
+            else:
+                travel_to_cinema_min = route_to_cinema.duration // 60 if route_to_cinema else 0
+
+            # 计算到餐厅的时间
             travel_to_restaurant_min = route_to_restaurant.duration // 60 if route_to_restaurant else travel_to_cinema_min
-            # 计算电影院到终点的时间（秒转分钟）
-            travel_from_cinema_min = route_to_dest.duration // 60 if route_to_dest else 0
 
-            timeline = self._generate_timeline(
-                request,
-                cinema,
-                restaurant,
-                travel_to_cinema_min,
-                travel_to_restaurant_min,
-                travel_from_cinema_min
-            )
+            # 计算电影院到终点的时间
+            if request.transportation == "transit" and transit_from_cinema:
+                travel_from_cinema_min = transit_from_cinema.total_duration
+            else:
+                travel_from_cinema_min = route_to_dest.duration // 60 if route_to_dest else 0
 
-            # 选择电影场次
+            # 先选择电影场次
             selected_showtime = None
             if cinema and cinema.showtimes:
-                # 选择19:30的场次（最常见的选择）
                 for showtime in cinema.showtimes:
                     if showtime.time == "19:30":
                         selected_showtime = showtime
@@ -190,26 +214,49 @@ class EscapePlannerAgent:
                 if not selected_showtime:
                     selected_showtime = cinema.showtimes[0]
 
-            # 决定晚餐时间
+            # 决定晚餐时间（在生成时间线之前）
             dinner_time = ""
-            dinner_before_or_after = "after"
-            if selected_showtime and restaurant:
-                # 电影前吃饭
-                dinner_before_or_after = "before"
-                # 计算晚餐时间：下班时间后，吃饭大约1小时，要在电影前吃完
+            dinner_before_or_after = "before"  # 默认电影前进食
+            if restaurant and selected_showtime:
+                # 计算：如果吃饭+赶到电影院时间 > 90分钟，则电影后吃
+                eat_time = 60 + 10  # 吃饭+赶路约70分钟
+                if travel_to_restaurant_min + eat_time + travel_to_cinema_min > 90:
+                    dinner_before_or_after = "after"
+                else:
+                    dinner_before_or_after = "before"
+                # 计算晚餐时间
                 off_hour, off_min = map(int, request.off_work_time.split(":"))
                 dinner_time = f"{off_hour + 1}:{off_min:02d}"
 
+            timeline = self._generate_timeline(
+                request,
+                cinema,
+                restaurant,
+                travel_to_cinema_min,
+                travel_to_restaurant_min,
+                travel_from_cinema_min,
+                dinner_before_or_after
+            )
+
             # 构建逃离计划
+            # 如果是公共交通，重新计算总耗时
+            if request.transportation == "transit":
+                if transit_to_cinema and transit_from_cinema:
+                    total_duration = transit_to_cinema.total_duration + transit_from_cinema.total_duration
+                elif transit_to_cinema:
+                    total_duration = transit_to_cinema.total_duration
+
             escape_plan = EscapePlan(
                 origin=request.origin,
                 destination=request.destination,
                 origin_location=origin_location,
                 destination_location=dest_location,
                 off_work_time=request.off_work_time,
-                total_duration=total_duration // 60,  # 转换为分钟
+                total_duration=total_duration,  # 公共交通时已计算好分钟数
                 total_distance=total_distance,
                 route_segments=segments,
+                transit_to_cinema=transit_to_cinema,
+                transit_from_cinema=transit_from_cinema,
                 cinema=cinema,
                 selected_showtime=selected_showtime,
                 dinner_before_or_after=dinner_before_or_after,
@@ -431,6 +478,203 @@ class EscapePlannerAgent:
             print(f"路线规划失败: {str(e)}")
             return None
 
+    def _plan_transit_route(
+        self,
+        origin_address: str,
+        destination_address: str,
+        city: str
+    ) -> Optional[TransitRoute]:
+        """规划公共交通路线（直接调用高德API，绕过MCP）"""
+        try:
+            # 先获取起点和终点坐标
+            origin_location = self._geocode(origin_address, city)
+            dest_location = self._geocode(destination_address, city)
+
+            if not origin_location or not dest_location:
+                print("   无法获取地址坐标")
+                return None
+
+            origin_coord = f"{origin_location.longitude},{origin_location.latitude}"
+            dest_coord = f"{dest_location.longitude},{dest_location.latitude}"
+
+            print(f"   公交路线: {origin_coord} -> {dest_coord}")
+
+            # 直接调用高德公交API
+            result = self.amap_service.plan_transit_route_direct(
+                origin=origin_coord,
+                destination=dest_coord,
+                city=city
+            )
+
+            if "error" in result:
+                print(f"   公交路线规划失败: {result['error']}")
+                return None
+
+            # 解析公交路线
+            return self._parse_transit_result(result, origin_address, destination_address)
+
+        except Exception as e:
+            print(f"公共交通路线规划失败: {str(e)}")
+            return None
+            return None
+
+    def _safe_json_parse(self, text: str) -> Optional[Dict[str, Any]]:
+        """安全解析 JSON，处理各种格式问题"""
+        try:
+            # 尝试直接解析
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+
+        try:
+            # 尝试修复单引号
+            text_fixed = text.replace("'", '"')
+            return json.loads(text_fixed)
+        except json.JSONDecodeError:
+            pass
+
+        try:
+            # 尝试用正则提取 JSON
+            json_match = re.search(r'\{.*\}', text, re.DOTALL)
+            if json_match:
+                return json.loads(json_match.group())
+        except Exception:
+            pass
+
+        return None
+
+    def _parse_transit_result(
+        self,
+        data: Dict[str, Any],
+        origin_address: str,
+        destination_address: str
+    ) -> Optional[TransitRoute]:
+        """解析公交路线结果"""
+        try:
+            print(f"   开始解析公交数据，data keys: {list(data.keys())}")
+            # 公交数据在 route.transits 里
+            route_data = data.get("route", {})
+            transits = route_data.get("transits", [])
+            print(f"   transits 数量: {len(transits)}")
+
+            if not transits:
+                print(f"   没有公交路线方案")
+                return None
+
+            # 取第一个路线方案
+            transit = transits[0]
+            print(f"   transit keys: {list(transit.keys())}")
+            total_duration_str = transit.get("duration", "0")
+            total_duration = int(total_duration_str) if isinstance(total_duration_str, str) else total_duration_str
+            total_dist_str = transit.get("distance", "0")
+            total_distance = float(total_dist_str) if isinstance(total_dist_str, str) else total_dist_str
+            total_cost_str = transit.get("cost", "0")
+            total_cost = float(total_cost_str) if isinstance(total_cost_str, str) else total_cost_str
+
+            segments = []
+            for seg in transit.get("segments", []):
+                # 步行段
+                walking = seg.get("walking", {})
+                if walking:
+                    walk_dir = walking.get("dir", "")
+                    walk_dist_str = walking.get("distance", "0")
+                    walk_dist = int(walk_dist_str) if isinstance(walk_dist_str, str) else walk_dist_str
+                    if walk_dist > 100:  # 只记录超过100米的步行
+                        # origin/destination 可能是 dict 或 string
+                        origin_raw = walking.get("origin", "")
+                        dest_raw = walking.get("destination", "")
+                        origin_name = origin_raw.get("name", origin_raw) if isinstance(origin_raw, dict) else origin_raw
+                        dest_name = dest_raw.get("name", dest_raw) if isinstance(dest_raw, dict) else dest_raw
+
+                        segments.append(TransitSegment(
+                            type="walking",
+                            name="步行",
+                            start_stop=str(origin_name),
+                            end_stop=str(dest_name),
+                            stops=0,
+                            duration=walk_dist // 80,  # 转换为分钟
+                            description=f"步行约{int(walk_dist)}米"
+                        ))
+
+                # 公交段
+                bus = seg.get("bus", {})
+                if bus and isinstance(bus, dict):
+                    bus_lines = bus.get("buslines", [])
+                    for line in bus_lines:
+                        seg_type = "subway" if "地铁" in line.get("type", "") else "bus"
+                        stops_str = line.get("stop_num", "0")
+                        stops = int(stops_str) if isinstance(stops_str, str) else stops
+                        dur_str = line.get("duration", "0")
+                        duration = int(dur_str) if isinstance(dur_str, str) else dur_str
+
+                        # departure_stop/arrival_stop 可能是 dict 或 string
+                        dep_raw = line.get("departure_stop", "")
+                        arr_raw = line.get("arrival_stop", "")
+                        dep_stop = dep_raw.get("name", dep_raw) if isinstance(dep_raw, dict) else dep_raw
+                        arr_stop = arr_raw.get("name", arr_raw) if isinstance(arr_raw, dict) else arr_raw
+
+                        segments.append(TransitSegment(
+                            type=seg_type,
+                            name=line.get("name", line.get("line_name", "")),
+                            start_stop=str(dep_stop),
+                            end_stop=str(arr_stop),
+                            stops=stops,
+                            duration=duration // 60,  # 秒转分钟
+                            description=f"乘{line.get('name', '公交')}从{dep_stop}到{arr_stop}"
+                        ))
+
+                # 地铁路段
+                metro = seg.get("metro", {})
+                if metro and isinstance(metro, dict):
+                    metro_lines = metro.get("metrolines", [])
+                    for line in metro_lines:
+                        stops_str = line.get("stop_num", "0")
+                        stops = int(stops_str) if isinstance(stops_str, str) else stops
+                        dur_str = line.get("duration", "0")
+                        duration = int(dur_str) if isinstance(dur_str, str) else dur_str
+
+                        # start_stop/end_stop 可能是 dict 或 string
+                        start_stop_raw = line.get("start_stop", "")
+                        end_stop_raw = line.get("end_stop", "")
+                        start_stop = start_stop_raw.get("name", start_stop_raw) if isinstance(start_stop_raw, dict) else start_stop_raw
+                        end_stop = end_stop_raw.get("name", end_stop_raw) if isinstance(end_stop_raw, dict) else end_stop_raw
+
+                        segments.append(TransitSegment(
+                            type="subway",
+                            name=line.get("name", ""),
+                            start_stop=str(start_stop),
+                            end_stop=str(end_stop),
+                            stops=stops,
+                            duration=duration // 60,  # 秒转分钟
+                            description=f"乘{line.get('name', '地铁')}从{start_stop}到{end_stop}"
+                        ))
+
+            # 生成描述
+            desc_parts = []
+            for s in segments:
+                if s.type == "walking":
+                    desc_parts.append(s.description)
+                else:
+                    desc_parts.append(f"{s.name}({s.start_stop}→{s.end_stop})")
+
+            description = " → ".join(desc_parts) if desc_parts else "公交路线"
+
+            print(f"   解析到 {len(segments)} 个公交段:")
+            for s in segments:
+                print(f"     - {s.type}: {s.name} ({s.start_stop} → {s.end_stop})")
+
+            return TransitRoute(
+                total_duration=total_duration // 60,  # 秒转分钟
+                total_distance=float(total_distance),
+                total_cost=float(total_cost),
+                segments=segments,
+                description=description
+            )
+
+        except Exception as e:
+            print(f"解析公交路线失败: {str(e)}")
+            return None
+
     def _search_nearby_restaurant(
         self,
         location: Location,
@@ -629,7 +873,8 @@ class EscapePlannerAgent:
         restaurant: Optional[Restaurant],
         travel_to_cinema_minutes: int = 0,
         travel_to_restaurant_minutes: int = 0,
-        travel_from_cinema_minutes: int = 0
+        travel_from_cinema_minutes: int = 0,
+        dinner_before_or_after: str = "before"
     ) -> List[Dict[str, Any]]:
         """生成详细时间线"""
         timeline = []
@@ -644,45 +889,55 @@ class EscapePlannerAgent:
             "description": "收拾东西，准备出发"
         })
 
-        # 如果有餐厅且电影前进食
-        if restaurant and cinema:
+        if dinner_before_or_after == "before" and restaurant and cinema:
+            # 电影前进食：下班 → 餐厅 → 电影院 → 回家
             # 到达餐厅时间
             arrive_restaurant_minutes = current_minutes + travel_to_restaurant_minutes
             timeline.append({
                 "time": f"{arrive_restaurant_minutes // 60}:{arrive_restaurant_minutes % 60:02d}",
                 "event": "晚餐",
                 "location": restaurant.name,
-                "description": f"享用晚餐"
+                "description": "享用晚餐"
             })
-            # 计算从餐厅到电影院的时间
+            # 吃完饭后的时间
             current_minutes = arrive_restaurant_minutes + 60  # 吃饭约1小时
-            # 加上从餐厅到电影院的路上时间（简化处理，用总时间减去已用时间）
+            # 从餐厅到电影院
             current_minutes += 10  # 假设从餐厅到电影院10分钟
-        elif cinema:
-            # 直接去电影院
-            current_minutes += travel_to_cinema_minutes
 
-        # 前往电影院 - 根据选择的场次反推
+            # 前往电影院
+            current_minutes = self._add_minutes_to_minutes(current_minutes, travel_to_cinema_minutes)
+            timeline.append({
+                "time": f"{current_minutes // 60}:{current_minutes % 60:02d}",
+                "event": "到达电影院",
+                "location": cinema.name,
+                "description": "取票，准备观影"
+            })
+
+        elif dinner_before_or_after == "after" and restaurant and cinema:
+            # 电影后进食：下班 → 电影院 → 餐厅 → 回家
+            # 前往电影院
+            current_minutes = self._add_minutes_to_minutes(current_minutes, travel_to_cinema_minutes)
+            timeline.append({
+                "time": f"{current_minutes // 60}:{current_minutes % 60:02d}",
+                "event": "到达电影院",
+                "location": cinema.name,
+                "description": "取票，准备观影"
+            })
+        elif cinema:
+            # 没有餐厅，直接去电影院
+            current_minutes = self._add_minutes_to_minutes(current_minutes, travel_to_cinema_minutes)
+            timeline.append({
+                "time": f"{current_minutes // 60}:{current_minutes % 60:02d}",
+                "event": "到达电影院",
+                "location": cinema.name,
+                "description": "准备观影"
+            })
+
+        # 电影相关时间线
         if cinema and cinema.showtimes:
-            # 选择电影场次
             showtime = cinema.showtimes[0]
             show_hour, show_min = map(int, showtime.time.split(":"))
             showtime_minutes = show_hour * 60 + show_min
-
-            # 计算到达时间（电影前15分钟取票）
-            arrive_minutes = showtime_minutes - 15
-
-            # 如果计算出的到达时间比当前时间早，用当前时间+路上时间
-            if arrive_minutes <= current_minutes:
-                # 需要提前出发才能赶上电影
-                arrive_minutes = current_minutes + 5
-
-            timeline.append({
-                "time": f"{arrive_minutes // 60}:{arrive_minutes % 60:02d}",
-                "event": "到达电影院",
-                "location": cinema.name,
-                "description": f"取票，准备观影"
-            })
 
             # 电影开场
             timeline.append({
@@ -698,19 +953,38 @@ class EscapePlannerAgent:
                 "time": f"{end_minutes // 60}:{end_minutes % 60:02d}",
                 "event": "电影结束",
                 "location": cinema.name,
-                "description": "返回家中或继续其他活动"
+                "description": "返回"
             })
 
-            # 到家
-            arrive_home_minutes = end_minutes + travel_from_cinema_minutes
+            # 回家
+            current_minutes = end_minutes
+            if dinner_before_or_after == "after" and restaurant:
+                # 电影后去餐厅
+                current_minutes = self._add_minutes_to_minutes(current_minutes, travel_from_cinema_minutes)
+                # 到达餐厅
+                timeline.append({
+                    "time": f"{current_minutes // 60}:{current_minutes % 60:02d}",
+                    "event": "晚餐",
+                    "location": restaurant.name,
+                    "description": "享用晚餐"
+                })
+                # 吃完后回家
+                current_minutes += 60  # 吃饭约1小时
+            else:
+                current_minutes = self._add_minutes_to_minutes(current_minutes, travel_from_cinema_minutes)
+
             timeline.append({
-                "time": f"{arrive_home_minutes // 60}:{arrive_home_minutes % 60:02d}",
+                "time": f"{current_minutes // 60}:{current_minutes % 60:02d}",
                 "event": "到家",
                 "location": request.destination,
                 "description": "回家休息"
             })
 
         return timeline
+
+    def _add_minutes_to_minutes(self, current_minutes: int, add_minutes: int) -> int:
+        """分钟加分钟，返回新的分钟数"""
+        return current_minutes + add_minutes
 
     def _add_minutes(self, time_str: str, minutes: int) -> str:
         """时间加分钟"""

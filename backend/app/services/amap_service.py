@@ -310,6 +310,51 @@ class AmapService:
             print(f"❌ 获取POI详情失败: {str(e)}")
             return {}
 
+    def plan_transit_route_direct(
+        self,
+        origin: str,
+        destination: str,
+        city: str
+    ) -> Dict[str, Any]:
+        """
+        直接调用高德公交路线API（绕过MCP）
+
+        Args:
+            origin: 起点坐标 "经度,纬度"
+            destination: 终点坐标 "经度,纬度"
+            city: 城市名称
+
+        Returns:
+            公交路线数据
+        """
+        try:
+            import requests
+
+            response = requests.get(
+                "https://restapi.amap.com/v3/direction/transit/integrated",
+                params={
+                    "key": self.mcp_tool.env.get("AMAP_MAPS_API_KEY"),
+                    "origin": origin,
+                    "destination": destination,
+                    "city": city,
+                    "cityd": city
+                },
+                timeout=10
+            )
+
+            data = response.json()
+
+            print(f"   公交API返回: {str(data)[:500]}...")
+
+            if data.get("status") != "1":
+                return {"error": f"公交路线查询失败: {data.get('info', '')}"}
+
+            return data
+
+        except Exception as e:
+            print(f"❌ 直接调用公交API失败: {str(e)}")
+            return {"error": str(e)}
+
 
 # 创建全局服务实例
 _amap_service = None

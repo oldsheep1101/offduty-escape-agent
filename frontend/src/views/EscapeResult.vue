@@ -169,6 +169,83 @@
             </div>
           </a-card>
 
+          <!-- 公共交通信息 -->
+          <a-card v-if="escapePlan.transit_to_cinema || escapePlan.transit_from_cinema" title="🚌 公交导航" :bordered="false" class="transit-card">
+            <!-- 去电影院公交 -->
+            <div v-if="escapePlan.transit_to_cinema" class="transit-section">
+              <div class="transit-section-title">去电影院</div>
+              <a-descriptions :column="3" size="small">
+                <a-descriptions-item label="总耗时">{{ escapePlan.transit_to_cinema.total_duration }}分钟</a-descriptions-item>
+                <a-descriptions-item label="总距离">{{ (escapePlan.transit_to_cinema.total_distance / 1000).toFixed(1) }}公里</a-descriptions-item>
+                <a-descriptions-item label="费用">¥{{ escapePlan.transit_to_cinema.total_cost }}</a-descriptions-item>
+              </a-descriptions>
+
+              <div class="transit-segments">
+                <div
+                  v-for="(seg, index) in escapePlan.transit_to_cinema.segments"
+                  :key="'to-' + index"
+                  class="transit-segment"
+                  :class="'segment-' + seg.type"
+                >
+                  <div class="segment-icon">
+                    <span v-if="seg.type === 'walking'">🚶</span>
+                    <span v-else-if="seg.type === 'bus'">🚌</span>
+                    <span v-else-if="seg.type === 'subway'">🚇</span>
+                  </div>
+                  <div class="segment-content">
+                    <div class="segment-name">{{ seg.name }}</div>
+                    <div class="segment-detail" v-if="seg.type !== 'walking'">
+                      {{ seg.start_stop }} → {{ seg.end_stop }}
+                      <span v-if="seg.stops > 0">，{{ seg.stops }}站</span>
+                    </div>
+                    <div class="segment-duration" v-if="seg.type !== 'walking'">
+                      约{{ seg.duration }}分钟
+                    </div>
+                    <div class="segment-desc">{{ seg.description }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <a-divider v-if="escapePlan.transit_to_cinema && escapePlan.transit_from_cinema"/>
+
+            <!-- 电影院回家公交 -->
+            <div v-if="escapePlan.transit_from_cinema" class="transit-section">
+              <div class="transit-section-title">电影院 → 家</div>
+              <a-descriptions :column="3" size="small">
+                <a-descriptions-item label="总耗时">{{ escapePlan.transit_from_cinema.total_duration }}分钟</a-descriptions-item>
+                <a-descriptions-item label="总距离">{{ (escapePlan.transit_from_cinema.total_distance / 1000).toFixed(1) }}公里</a-descriptions-item>
+                <a-descriptions-item label="费用">¥{{ escapePlan.transit_from_cinema.total_cost }}</a-descriptions-item>
+              </a-descriptions>
+
+              <div class="transit-segments">
+                <div
+                  v-for="(seg, index) in escapePlan.transit_from_cinema.segments"
+                  :key="'from-' + index"
+                  class="transit-segment"
+                  :class="'segment-' + seg.type"
+                >
+                  <div class="segment-icon">
+                    <span v-if="seg.type === 'walking'">🚶</span>
+                    <span v-else-if="seg.type === 'bus'">🚌</span>
+                    <span v-else-if="seg.type === 'subway'">🚇</span>
+                  </div>
+                  <div class="segment-content">
+                    <div class="segment-name">{{ seg.name }}</div>
+                    <div class="segment-detail" v-if="seg.type !== 'walking'">
+                      {{ seg.start_stop }} → {{ seg.end_stop }}
+                      <span v-if="seg.stops > 0">，{{ seg.stops }}站</span>
+                    </div>
+                    <div class="segment-duration" v-if="seg.type !== 'walking'">
+                      约{{ seg.duration }}分钟
+                    </div>
+                    <div class="segment-desc">{{ seg.description }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </a-card>
+
           <!-- 地图 -->
           <a-card title="📍 地图" :bordered="false" class="map-card">
             <div id="escape-amap-container" style="width: 100%; height: 300px"></div>
@@ -664,6 +741,85 @@ const initMap = async () => {
   margin: 0;
   color: #666;
   line-height: 1.8;
+}
+
+/* 公交导航卡片 */
+.transit-card {
+  margin-bottom: 24px;
+}
+
+.transit-segments {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.transit-section {
+  margin-bottom: 16px;
+}
+
+.transit-section-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: #333;
+  margin-bottom: 12px;
+}
+
+.transit-segment {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 8px;
+  border-left: 4px solid #667eea;
+}
+
+.transit-segment.segment-walking {
+  border-left-color: #999;
+  background: #f5f5f5;
+}
+
+.transit-segment.segment-bus {
+  border-left-color: #52c41a;
+}
+
+.transit-segment.segment-subway {
+  border-left-color: #1890ff;
+}
+
+.segment-icon {
+  font-size: 24px;
+  width: 36px;
+  text-align: center;
+}
+
+.segment-content {
+  flex: 1;
+}
+
+.segment-name {
+  font-weight: 600;
+  font-size: 16px;
+  color: #333;
+}
+
+.segment-detail {
+  font-size: 14px;
+  color: #666;
+  margin-top: 4px;
+}
+
+.segment-duration {
+  font-size: 12px;
+  color: #999;
+  margin-top: 2px;
+}
+
+.segment-desc {
+  font-size: 12px;
+  color: #999;
+  margin-top: 4px;
 }
 
 /* 卡片通用样式 */
